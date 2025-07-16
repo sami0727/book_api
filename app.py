@@ -1,48 +1,50 @@
-from flask import Flask, request, jsonify, abort
-from models import db, Book
-from flask_migrate import Migrate
-from config import Config
+from flask import Flask, request, jsonify
+from flask_sqlalchemy import SQLAlchemy
 
 app = Flask(__name__)
-app.config.from_object(Config)
+app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///tasks.db'
+db = SQLAlchemy(app)
 
-db.init_app(app)
-migrate = Migrate(app, db)
+class Task(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    title = db.Column(db.String(100), nullable=False)
+    description = db.Column(db.String(200), nullable=True)
+    completed = db.Column(db.Boolean, default=False)
 
-@app.route('/books', methods=['GET'])
-def get_books():
-    return jsonify([{"id": b.id, "title": b.title, "author": b.author} for b in Book.query.all()])
+@app.route('/tasks', methods=['GET'])
+def get_tasks():
+    tasks = Task.query.all()
+    return jsonify([{
+        'id': t.id, 'title': t.title,
+        'description': t.description, 'completed': t.completed
+    } for t in tasks])
 
-@app.route('/books/<int:id>', methods=['GET'])
-def get_book(id):
-    book = Book.query.get_or_404(id)
-    return jsonify({"id": book.id, "title": book.title, "author": book.author})
-
-@app.route('/books', methods=['POST'])
-def create_book():
-    data = request.get_json()
-    if not data or 'title' not in data or 'author' not in data:
-        abort(400)
-    book = Book(title=data['title'], author=data['author'])
-    db.session.add(book)
+@app.route('/tasks', methods=['POST'])
+def add_task():
+    data = request.json
+    task = Task(title=data['title'], description=data.get('description', ''))
+    db.session.add(task)
     db.session.commit()
-    return jsonify({"id": book.id, "title": book.title, "author": book.author}), 201
+    return jsonify({'message': 'Task created'}), 201
 
-@app.route('/books/<int:id>', methods=['PUT'])
-def update_book(id):
-    book = Book.query.get_or_404(id)
-    data = request.get_json()
-    book.title = data.get('title', book.title)
-    book.author = data.get('author', book.author)
+@app.route('/tasks/<int:id>', methods=['PUT'])
+def update_task(id):
+    task = Task.query.get_or_404(id)
+    data = request.json
+    task.title = data.get('title', task.title)
+    task.description = data.get('description', task.description)
+    task.completed = data.get('completed', task.completed)
     db.session.commit()
-    return jsonify({"id": book.id, "title": book.title, "author": book.author})
+    return jsonify({'message': 'Task updated'})
 
-@app.route('/books/<int:id>', methods=['DELETE'])
-def delete_book(id):
-    book = Book.query.get_or_404(id)
-    db.session.delete(book)
+@app.route('/tasks/<int:id>', methods=['DELETE'])
+def delete_task(id):
+    task = Task.query.get_or_404(id)
+    db.session.delete(task)
     db.session.commit()
-    return jsonify({"message": "Book deleted"})
+    return jsonify({'message': 'Task deleted'})
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0')
+    with app.app_context():
+        db.create_all()
+    app.run(debug=True)
